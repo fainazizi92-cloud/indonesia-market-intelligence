@@ -1,4 +1,4 @@
--- Indonesia Market Intelligence — canonical Phase-1 schema
+-- Indonesia Market Intelligence — canonical schema through Phase 3B.2
 -- PostgreSQL-first. TimescaleDB can be enabled later for larger intraday/time-series workloads.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -40,10 +40,38 @@ CREATE TABLE instruments (
 );
 
 CREATE TABLE trading_calendar (
-    trading_date DATE PRIMARY KEY,
+    trading_date DATE NOT NULL,
     market TEXT NOT NULL DEFAULT 'IDX',
     is_trading_day BOOLEAN NOT NULL,
-    session_notes TEXT
+    session_notes TEXT,
+
+    day_type TEXT NOT NULL DEFAULT 'UNKNOWN'
+        CHECK (
+            day_type IN (
+                'OBSERVED_TRADING',
+                'OFFICIAL_TRADING',
+                'WEEKEND',
+                'OFFICIAL_HOLIDAY',
+                'SPECIAL_CLOSURE',
+                'UNVERIFIED_NON_TRADING',
+                'UNKNOWN'
+            )
+        ),
+
+    source_id UUID REFERENCES data_sources(id),
+
+    verified BOOLEAN NOT NULL DEFAULT FALSE,
+
+    evidence JSONB NOT NULL
+        DEFAULT '{}'::jsonb,
+
+    updated_at TIMESTAMPTZ NOT NULL
+        DEFAULT now(),
+
+    PRIMARY KEY (
+        trading_date,
+        market
+    )
 );
 
 CREATE TABLE index_memberships (
@@ -55,6 +83,47 @@ CREATE TABLE index_memberships (
     source_id UUID NOT NULL REFERENCES data_sources(id),
     ingested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (index_instrument_id, member_instrument_id, effective_from)
+);
+
+CREATE TABLE instrument_universe_snapshots (
+    snapshot_date DATE NOT NULL,
+    universe_code TEXT NOT NULL,
+    instrument_id UUID NOT NULL
+        REFERENCES instruments(id),
+    source_id UUID NOT NULL
+        REFERENCES data_sources(id),
+
+    is_member BOOLEAN NOT NULL
+        DEFAULT TRUE,
+
+    listing_status TEXT NOT NULL
+        DEFAULT 'CURRENT_PROFILE',
+
+    metadata JSONB NOT NULL
+        DEFAULT '{}'::jsonb,
+
+    ingested_at TIMESTAMPTZ NOT NULL
+        DEFAULT now(),
+
+    PRIMARY KEY (
+        snapshot_date,
+        universe_code,
+        instrument_id
+    )
+);
+
+
+CREATE INDEX idx_universe_snapshot_code_date
+ON instrument_universe_snapshots (
+    universe_code,
+    snapshot_date DESC
+);
+
+
+CREATE INDEX idx_universe_snapshot_instrument
+ON instrument_universe_snapshots (
+    instrument_id,
+    snapshot_date DESC
 );
 
 CREATE TABLE market_prices_eod (
@@ -100,25 +169,37 @@ CREATE TABLE investor_flows_eod (
     PRIMARY KEY (instrument_id, trading_date, investor_scope, source_id)
 );
 
-CREATE TABLE market_breadth_daily (
+CREATE TABLE market_regimes_daily (
     trading_date DATE NOT NULL,
-    universe_code TEXT NOT NULL,
-    advances INTEGER,
-    declines INTEGER,
-    unchanged INTEGER,
-    new_high_20d INTEGER,
-    new_low_20d INTEGER,
-    new_high_52w INTEGER,
-    new_low_52w INTEGER,
-    pct_above_ema20 NUMERIC(8,4),
-    pct_above_ema50 NUMERIC(8,4),
-    pct_above_ema200 NUMERIC(8,4),
-    up_volume NUMERIC(30,6),
-    down_volume NUMERIC(30,6),
+
+    regime regime_label NOT NULL,
+
+    confidence NUMERIC(8,4),
+
+    global_score NUMERIC(8,4),
+
+    indonesia_macro_score NUMERIC(8,4),
+
+    ihsg_trend_score NUMERIC(8,4),
+
     breadth_score NUMERIC(8,4),
-    source_id UUID REFERENCES data_sources(id),
-    ingested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (trading_date, universe_code)
+
+    flow_score NUMERIC(8,4),
+
+    volatility_score NUMERIC(8,4),
+
+    model_version TEXT NOT NULL,
+
+    evidence JSONB NOT NULL
+        DEFAULT '{}'::jsonb,
+
+    calculated_at TIMESTAMPTZ NOT NULL
+        DEFAULT now(),
+
+    PRIMARY KEY (
+        trading_date,
+        model_version
+    )
 );
 
 CREATE TABLE fundamentals_periodic (
