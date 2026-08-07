@@ -40,6 +40,29 @@ OFFICIAL_DATA_SOURCES = [
         "source_type": "OFFICIAL_DEPOSITORY",
         "authority_rank": 1,
         "base_url": "https://www.ksei.co.id/",
-        "license_notes": "Official KSEI ownership and investor reference data.",
+        "license_notes": (
+            "Official KSEI ownership and investor reference data."
+        ),
     },
 ]
+
+
+DEVELOPMENT_DATA_SOURCES = [
+    {
+        "code": "YAHOO_FINANCE",
+        "name": "Yahoo Finance",
+        "source_type": "THIRD_PARTY_MARKET_DATA",
+        "authority_rank": 3,
+        "base_url": "https://query1.finance.yahoo.com/",
+        "license_notes": (
+            "Third-party development and cross-check source. "
+            "Do not classify as official IDX data. Review provider "
+            "terms before production use or redistribution."
+        ),
+    },
+]
+
+
+ALL_DATA_SOURCES = (
+    OFFICIAL_DATA_SOURCES + DEVELOPMENT_DATA_SOURCES
+)

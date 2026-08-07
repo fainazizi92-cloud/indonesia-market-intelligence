@@ -1,6 +1,6 @@
 from sqlalchemy import text
 
-from imi.data_sources import OFFICIAL_DATA_SOURCES
+from imi.data_sources import ALL_DATA_SOURCES
 from imi.db import engine
 
 UPSERT_SOURCE = text(
@@ -37,10 +37,15 @@ UPSERT_SOURCE = text(
 
 def main() -> None:
     with engine.begin() as connection:
-        for source in OFFICIAL_DATA_SOURCES:
-            connection.execute(UPSERT_SOURCE, source)
+        for source in ALL_DATA_SOURCES:
+            connection.execute(
+                UPSERT_SOURCE,
+                source,
+            )
 
-    print(f"Seeded {len(OFFICIAL_DATA_SOURCES)} official data sources.")
+    print(
+        f"Seeded {len(ALL_DATA_SOURCES)} data sources."
+    )
 
 
 if __name__ == "__main__":
