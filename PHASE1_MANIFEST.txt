@@ -1,0 +1,13 @@
+.env.example
+PHASE1_MANIFEST.txt
+README.md
+config/sources.example.yml
+db/schema.sql
+docs/ARCHITECTURE.md
+docs/DATA_DICTIONARY.csv
+docs/SOURCE_MAP.md
+pyproject.toml
+scripts/validate_setup.py
+src/imi/__init__.py
+src/imi/config.py
+tests/test_phase1.py

@@ -1,0 +1,99 @@
+﻿domain,field,description,unit,frequency,canonical_table,preferred_source,priority,mvp_required,notes
+reference,symbol,Canonical instrument ticker/code,text,event,instruments,IDX,P0,yes,Never infer aliases without mapping
+reference,sector_code,IDX-IC sector code,text,event,instruments,IDX,P0,yes,Effective-dated classification preferred
+reference,index_membership,Index constituent membership,boolean,event,index_memberships,IDX EoD Indices Weight,P0,yes,Store effective dates
+reference,index_weight,Constituent index weight,ratio,daily/event,index_memberships,IDX EoD Indices Weight,P0,yes,Useful for attribution
+market_eod,open,Regular-market open price,IDR,daily,market_prices_eod,IDX EOD,P0,yes,Raw/unadjusted
+market_eod,high,Regular-market high price,IDR,daily,market_prices_eod,IDX EOD,P0,yes,Raw/unadjusted
+market_eod,low,Regular-market low price,IDR,daily,market_prices_eod,IDX EOD,P0,yes,Raw/unadjusted
+market_eod,close,Regular-market close price,IDR,daily,market_prices_eod,IDX EOD,P0,yes,Canonical close
+market_eod,previous_close,Prior close,IDR,daily,market_prices_eod,IDX EOD,P0,yes,Validation field
+market_eod,volume,Trading volume,shares,daily,market_prices_eod,IDX EOD,P0,yes,Check board definition
+market_eod,value,Trading value,IDR,daily,market_prices_eod,IDX EOD,P0,yes,Core liquidity metric
+market_eod,frequency,Trade frequency,count,daily,market_prices_eod,IDX EOD,P0,yes,Core liquidity metric
+market_eod,market_cap,Market capitalization,IDR,daily,market_prices_eod,IDX EOD Indices/Reference,P1,no,Needed for normalization
+flow,foreign_buy_value,Foreign buy value,IDR,daily,investor_flows_eod,IDX EoD Recapitulation,P0,yes,Full day
+flow,foreign_sell_value,Foreign sell value,IDR,daily,investor_flows_eod,IDX EoD Recapitulation,P0,yes,Full day
+flow,foreign_net_value,Derived foreign buy minus sell,IDR,daily,derived,IDX EoD Recapitulation,P0,yes,"Derived, not separately sourced"
+flow,foreign_buy_volume,Foreign buy volume,shares,daily,investor_flows_eod,IDX EoD Recapitulation,P0,yes,Full day
+flow,foreign_sell_volume,Foreign sell volume,shares,daily,investor_flows_eod,IDX EoD Recapitulation,P0,yes,Full day
+breadth,advances,Number of advancing securities,count,daily,market_breadth_daily,Derived from IDX EOD universe,P0,yes,Define eligible universe
+breadth,declines,Number of declining securities,count,daily,market_breadth_daily,Derived from IDX EOD universe,P0,yes,Define eligible universe
+breadth,unchanged,Number unchanged,count,daily,market_breadth_daily,Derived from IDX EOD universe,P0,yes,Define eligible universe
+breadth,advance_decline_ratio,Advances divided by declines,ratio,daily,derived,Derived,P0,yes,Handle zero declines
+breadth,pct_above_ema20,Universe above EMA20,percent,daily,market_breadth_daily,Derived from IDX EOD,P0,yes,Use active/liquid universe flag
+breadth,pct_above_ema50,Universe above EMA50,percent,daily,market_breadth_daily,Derived from IDX EOD,P0,yes,Use active/liquid universe flag
+breadth,pct_above_ema200,Universe above EMA200,percent,daily,market_breadth_daily,Derived from IDX EOD,P0,yes,Requires history
+breadth,new_high_20d,New 20-day highs,count,daily,market_breadth_daily,Derived,P1,no,Exclude insufficient-history names
+breadth,new_low_20d,New 20-day lows,count,daily,market_breadth_daily,Derived,P1,no,Exclude insufficient-history names
+breadth,new_high_52w,New 52-week highs,count,daily,market_breadth_daily,Derived,P1,no,Requires >=252 sessions
+breadth,new_low_52w,New 52-week lows,count,daily,market_breadth_daily,Derived,P1,no,Requires >=252 sessions
+sector,sector_return_1d,Sector return 1 day,percent,daily,sector_scores_daily,Derived from IDX indices,P0,yes,Use official sector index
+sector,sector_return_5d,Sector return 5 sessions,percent,daily,sector_scores_daily,Derived,P0,yes,Trading-day window
+sector,sector_return_20d,Sector return 20 sessions,percent,daily,sector_scores_daily,Derived,P0,yes,Trading-day window
+sector,sector_rs_20d,Sector relative strength vs IHSG,score,daily,sector_scores_daily,Derived,P0,yes,Method versioned
+sector,sector_breadth_score,Sector internal breadth,0-100,daily,sector_scores_daily,Derived,P0,yes,Component universe effective-dated
+sector,rotation_label,Leading/improving/etc.,category,daily,sector_scores_daily,Derived,P0,yes,Versioned model
+macro_id,bi_rate,BI policy rate,percent,event,macro_observations,Bank Indonesia,P0,yes,Release timestamp required
+macro_id,jisdor,USD/IDR JISDOR,IDR per USD,daily,macro_observations,Bank Indonesia,P0,yes,Reference FX rate
+macro_id,indonia,INDONIA overnight rate,percent,daily,macro_observations,Bank Indonesia,P1,no,Liquidity feature
+macro_id,fx_reserves,Official reserve assets,USD,monthly,macro_observations,Bank Indonesia,P1,no,Release timestamp required
+macro_id,cpi_yoy,Headline CPI YoY,percent,monthly,macro_observations,BPS,P0,yes,As-released vintage retained later
+macro_id,core_cpi_yoy,Core CPI YoY,percent,monthly,macro_observations,BPS,P0,yes,As-released vintage retained later
+macro_id,gdp_yoy,GDP YoY,percent,quarterly,macro_observations,BPS,P1,no,Release timestamp required
+macro_id,trade_balance,Trade balance,USD,monthly,macro_observations,BPS,P1,no,Release timestamp required
+global,sp500_close,S&P 500 close/last,index,daily,market_prices_eod,TBD licensed/official,P0,yes,Provider audit
+global,nasdaq_close,Nasdaq close/last,index,daily,market_prices_eod,TBD licensed/official,P0,yes,Provider audit
+global,vix,VIX level,index,daily,market_prices_eod,TBD licensed/official,P0,yes,Provider audit
+global,us10y,US 10Y Treasury yield,percent,daily,macro_observations,US Treasury/FRED,P0,yes,Official preferred
+global,us2y,US 2Y Treasury yield,percent,daily,macro_observations,US Treasury/FRED,P0,yes,Official preferred
+global,dxy,US dollar index,index,daily,market_prices_eod,TBD licensed provider,P0,yes,Provider audit
+commodity,gold,Gold price,USD/oz,daily,market_prices_eod,TBD licensed provider,P0,yes,Define benchmark contract/spot
+commodity,brent,Brent crude,USD/bbl,daily,market_prices_eod,TBD licensed provider,P0,yes,Define benchmark contract
+commodity,wti,WTI crude,USD/bbl,daily,market_prices_eod,TBD licensed provider,P0,yes,Define benchmark contract
+commodity,copper,Copper price,USD,daily,market_prices_eod,TBD licensed provider,P1,no,Define benchmark
+commodity,coal,Coal benchmark,USD/ton,daily,market_prices_eod,TBD licensed provider,P1,no,Select Indonesia-relevant benchmark
+commodity,cpo,CPO benchmark,MYR/ton,daily,market_prices_eod,TBD licensed provider,P1,no,Select FCPO/other benchmark
+commodity,nickel,Nickel benchmark,USD/ton,daily,market_prices_eod,TBD licensed provider,P1,no,LME/reference choice
+fundamental,revenue,Revenue,IDR,quarterly/annual,fundamentals_periodic,IDX/issuer filing,P0,yes,Standardize period
+fundamental,net_income,Net income attributable,IDR,quarterly/annual,fundamentals_periodic,IDX/issuer filing,P0,yes,Definition audit
+fundamental,eps,EPS,IDR/share,quarterly/annual,fundamentals_periodic,IDX/issuer filing,P0,yes,Basic/diluted field later
+fundamental,operating_cash_flow,Operating cash flow,IDR,quarterly/annual,fundamentals_periodic,IDX/issuer filing,P0,yes,Earnings-quality feature
+fundamental,free_cash_flow,Derived OCF minus capex,IDR,quarterly/annual,fundamentals_periodic,Derived,P1,no,Version formula
+fundamental,roe,Return on equity,percent,quarterly/annual,fundamentals_periodic,Derived/filing,P0,yes,Use consistent denominator
+fundamental,roic,Return on invested capital,percent,quarterly/annual,fundamentals_periodic,Derived,P1,no,Formula versioned
+fundamental,total_debt,Total interest-bearing debt,IDR,quarterly/annual,fundamentals_periodic,IDX/issuer filing,P0,yes,Definition standardized
+valuation,pe,Price/earnings,multiple,daily,valuation_daily,Derived,P0,yes,Trailing definition
+valuation,pbv,Price/book,multiple,daily,valuation_daily,Derived,P0,yes,Sector-specific interpretation
+valuation,ev_ebitda,EV/EBITDA,multiple,daily,valuation_daily,Derived,P1,no,Not applicable to all sectors
+valuation,dividend_yield,Dividend yield,percent,daily,valuation_daily,Derived,P1,no,Trailing/forward distinction
+ownership,free_float_pct,Free-float percentage,percent,event/snapshot,ownership_snapshots,IDX/OJK official,P1,no,Effective date required
+ownership,foreign_ownership_pct,Foreign ownership,percent,snapshot,ownership_snapshots,KSEI/IDX/OJK official,P1,no,Endpoint audit
+ownership,hsc_flag,High shareholding concentration flag,boolean,snapshot,ownership_snapshots,IDX/OJK official,P1,no,Methodology/effective date required
+corporate_action,action_type,Dividend/rights/split/buyback/etc.,category,event,corporate_actions,IDX/issuer/OJK,P0,yes,Canonical taxonomy
+corporate_action,ex_date,Ex-date,date,event,corporate_actions,IDX/issuer,P0,yes,Adjustment engine dependency
+news,published_at,Publication timestamp,timestamp,event,news_events,Primary source/news,P0,yes,Timezone-aware
+news,event_type,Catalyst taxonomy,category,event,news_events,Derived,P0,yes,Version taxonomy
+news,direction,Positive/negative/mixed/neutral,category,event,news_events,Model/analyst,P1,no,Evidence and confidence required
+technical,ema20,20-session EMA,price,daily,technical_features_daily,Derived,P0,yes,Versioned calculation
+technical,ema50,50-session EMA,price,daily,technical_features_daily,Derived,P0,yes,Versioned calculation
+technical,ema200,200-session EMA,price,daily,technical_features_daily,Derived,P0,yes,Requires sufficient history
+technical,rsi14,14-period RSI,0-100,daily,technical_features_daily,Derived,P0,yes,Wilder method fixed
+technical,atr14,14-period ATR,price,daily,technical_features_daily,Derived,P0,yes,Wilder method fixed
+technical,volume_z20,20-session volume z-score,z-score,daily,technical_features_daily,Derived,P0,yes,Handle corporate actions/anomalies
+technical,rs_ihsg_20d,20D relative strength vs IHSG,score/return spread,daily,technical_features_daily,Derived,P0,yes,Formula versioned
+technical,rs_sector_20d,20D relative strength vs sector,score/return spread,daily,technical_features_daily,Derived,P0,yes,Sector mapping effective-dated
+model,market_regime,IHSG regime label,category,daily,market_regimes_daily,Derived,P0,yes,Evidence stored
+model,overall_score,Stock setup score,0-100,daily,stock_scores_daily,Derived,P0,yes,Not a probability
+model,data_completeness,Input completeness score,0-100,daily,stock_scores_daily,Derived,P0,yes,Caps confidence
+model,probability_tp_before_sl,Calibrated historical probability,0-1,signal,signals,Derived model,P1,no,Only after sufficient OOS validation
+model,expected_value_r,Expected value in R,R,signal,signals,Derived,P1,no,Requires calibrated probability
+signal,status,BUY_SETUP/WATCH/WAIT/AVOID,category,signal,signals,Decision engine,P0,yes,Immutable after issuance
+signal,entry_zone,Entry low/high,IDR,signal,signals,Decision engine,P0,yes,Must be evidence-based
+signal,invalidation_price,Thesis invalidation,IDR,signal,signals,Decision engine,P0,yes,Not always identical to SL
+signal,stop_price,Risk stop,IDR,signal,signals,Risk engine,P0,conditional,Required for BUY_SETUP
+signal,target_primary,Primary target,IDR,signal,signals,Risk engine,P0,conditional,Required for BUY_SETUP
+outcome,mfe,Maximum favorable excursion,percent/R,post-signal,signal_outcomes,Derived,P0,yes,Evaluation
+outcome,mae,Maximum adverse excursion,percent/R,post-signal,signal_outcomes,Derived,P0,yes,Evaluation
+outcome,target_hit,Whether target hit,boolean,post-signal,signal_outcomes,Derived,P0,yes,Frozen rules
+outcome,stop_hit,Whether stop hit,boolean,post-signal,signal_outcomes,Derived,P0,yes,Frozen rules

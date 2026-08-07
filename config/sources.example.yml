@@ -1,0 +1,54 @@
+timezone: Asia/Jakarta
+
+sources:
+  idx_eod:
+    provider: IDX
+    priority: 1
+    mode: licensed_eod
+    status: audit_required
+    expected_frequency: daily
+    required_for_mvp: true
+
+  idx_digital_statistics:
+    provider: IDX
+    priority: 2
+    mode: public_reference
+    status: available_for_reconciliation
+    expected_frequency: monthly
+    required_for_mvp: false
+
+  bi:
+    provider: Bank Indonesia
+    priority: 1
+    mode: official_public
+    status: endpoint_audit_required
+    required_for_mvp: true
+
+  bps:
+    provider: BPS
+    priority: 1
+    mode: webapi_official
+    status: credential_and_endpoint_audit_required
+    required_for_mvp: true
+
+  ojk:
+    provider: OJK
+    priority: 1
+    mode: official_public
+    status: endpoint_audit_required
+    required_for_mvp: false
+
+  global_market:
+    provider: TBD_LICENSED_PROVIDER
+    priority: 1
+    mode: api
+    status: provider_selection_required
+    required_for_mvp: true
+
+quality:
+  reject_future_observation_timestamps: true
+  require_source_id: true
+  require_ingested_at: true
+  require_observed_at_for_market_data: true
+  stale_market_eod_hours: 24
+  duplicate_policy: keep_latest_version_and_audit
