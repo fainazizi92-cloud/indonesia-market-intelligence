@@ -96,10 +96,10 @@ def sample_input():
 def test_version():
     result = (
         build_execution_sensitivity_version(
-            
+
                 "execution_realism_v1_"
                 "current_20260808_idx_eod"
-            
+
         )
     )
 
