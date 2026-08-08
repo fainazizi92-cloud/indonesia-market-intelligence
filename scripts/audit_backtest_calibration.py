@@ -146,12 +146,12 @@ def compare_rows(
                 mismatches += 1
 
                 details.append(
-                    
+
                         f"{signal_id} "
                         f"{field}: "
                         f"{expected[field]} != "
                         f"{actual[field]}"
-                    
+
                 )
 
                 failed = True
@@ -184,10 +184,10 @@ def compare_rows(
                 mismatches += 1
 
                 details.append(
-                    
+
                         f"{signal_id} "
                         f"{field}: mismatch"
-                    
+
                 )
 
                 break

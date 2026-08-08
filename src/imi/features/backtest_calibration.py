@@ -613,10 +613,10 @@ def compute_backtest_summary(
         < MIN_MATURE_TRADES
     ):
         readiness_reasons.append(
-            
+
                 "MATURE_TRADES_BELOW_"
                 f"{MIN_MATURE_TRADES}"
-            
+
         )
 
     if (
@@ -624,10 +624,10 @@ def compute_backtest_summary(
         < MIN_VALIDATION_TRADES
     ):
         readiness_reasons.append(
-            
+
                 "VALIDATION_TRADES_BELOW_"
                 f"{MIN_VALIDATION_TRADES}"
-            
+
         )
 
     if (
@@ -635,18 +635,18 @@ def compute_backtest_summary(
         < MIN_TEST_TRADES
     ):
         readiness_reasons.append(
-            
+
                 "TEST_TRADES_BELOW_"
                 f"{MIN_TEST_TRADES}"
-            
+
         )
 
     if not STRICT_POINT_IN_TIME_READY:
         readiness_reasons.append(
-            
+
                 "STRICT_POINT_IN_TIME_"
                 "DATA_NOT_READY"
-            
+
         )
 
     if not TRANSACTION_COSTS_MODELED:
@@ -656,10 +656,10 @@ def compute_backtest_summary(
 
     if not INTRADAY_SEQUENCE_AVAILABLE:
         readiness_reasons.append(
-            
+
                 "INTRADAY_SEQUENCE_"
                 "NOT_AVAILABLE"
-            
+
         )
 
     calibration_ready = (
