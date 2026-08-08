@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Any, Literal
 
 BREADTH_VERSION = "BREADTH_V1"
 
@@ -7,6 +8,12 @@ ADVANCE_DECLINE_WEIGHT = 0.25
 HIGH_LOW_52W_WEIGHT = 0.15
 HIGH_LOW_20D_WEIGHT = 0.10
 VOLUME_WEIGHT = 0.10
+
+BreadthBuildMode = Literal[
+    "FULL",
+    "INCREMENTAL",
+    "UP_TO_DATE",
+]
 
 
 def build_universe_code(
@@ -17,6 +24,39 @@ def build_universe_code(
         f"{snapshot_date:%Y%m%d}"
         "_EMA200_"
         f"{BREADTH_VERSION}"
+    )
+
+
+def resolve_build_mode(
+    *,
+    existing_rows: int,
+    existing_last_date: date | None,
+    latest_input_date: date,
+    force: bool,
+) -> BreadthBuildMode:
+    if force:
+        return "FULL"
+
+    if existing_rows <= 0:
+        return "FULL"
+
+    if existing_last_date is None:
+        raise RuntimeError(
+            "Breadth coverage is inconsistent: "
+            "rows exist but last_date is NULL."
+        )
+
+    if existing_last_date == latest_input_date:
+        return "UP_TO_DATE"
+
+    if existing_last_date < latest_input_date:
+        return "INCREMENTAL"
+
+    raise RuntimeError(
+        "Breadth data is ahead of technical "
+        "feature inputs: "
+        f"breadth={existing_last_date}, "
+        f"input={latest_input_date}."
     )
 
 
@@ -175,3 +215,167 @@ def calculate_breadth_score(
         ),
         4,
     )
+
+
+def prepare_breadth_rows(
+    *,
+    inputs: list[dict[str, Any]],
+    universe_code: str,
+    source_id: object,
+) -> list[dict[str, Any]]:
+    output: list[
+        dict[str, Any]
+    ] = []
+
+    for item in inputs:
+        advances = int(
+            item["advances"]
+        )
+
+        declines = int(
+            item["declines"]
+        )
+
+        unchanged = int(
+            item["unchanged"]
+        )
+
+        eligible_count = int(
+            item["eligible_count"]
+        )
+
+        directional_total = (
+            advances
+            + declines
+            + unchanged
+        )
+
+        if (
+            directional_total
+            != eligible_count
+        ):
+            raise RuntimeError(
+                "Breadth population mismatch "
+                f"on {item['trading_date']}: "
+                f"eligible={eligible_count}, "
+                f"A+D+U={directional_total}"
+            )
+
+        new_high_20d = int(
+            item["new_high_20d"]
+        )
+
+        new_low_20d = int(
+            item["new_low_20d"]
+        )
+
+        new_high_52w = int(
+            item["new_high_52w"]
+        )
+
+        new_low_52w = int(
+            item["new_low_52w"]
+        )
+
+        pct_above_ema20 = float(
+            item["pct_above_ema20"]
+        )
+
+        pct_above_ema50 = float(
+            item["pct_above_ema50"]
+        )
+
+        pct_above_ema200 = float(
+            item["pct_above_ema200"]
+        )
+
+        up_volume = float(
+            item["up_volume"]
+        )
+
+        down_volume = float(
+            item["down_volume"]
+        )
+
+        breadth_score = (
+            calculate_breadth_score(
+                advances=advances,
+                declines=declines,
+                unchanged=unchanged,
+                new_high_20d=(
+                    new_high_20d
+                ),
+                new_low_20d=(
+                    new_low_20d
+                ),
+                new_high_52w=(
+                    new_high_52w
+                ),
+                new_low_52w=(
+                    new_low_52w
+                ),
+                pct_above_ema20=(
+                    pct_above_ema20
+                ),
+                pct_above_ema50=(
+                    pct_above_ema50
+                ),
+                pct_above_ema200=(
+                    pct_above_ema200
+                ),
+                up_volume=(
+                    up_volume
+                ),
+                down_volume=(
+                    down_volume
+                ),
+            )
+        )
+
+        output.append(
+            {
+                "trading_date":
+                    item["trading_date"],
+                "universe_code":
+                    universe_code,
+                "advances":
+                    advances,
+                "declines":
+                    declines,
+                "unchanged":
+                    unchanged,
+                "new_high_20d":
+                    new_high_20d,
+                "new_low_20d":
+                    new_low_20d,
+                "new_high_52w":
+                    new_high_52w,
+                "new_low_52w":
+                    new_low_52w,
+                "pct_above_ema20":
+                    round(
+                        pct_above_ema20,
+                        4,
+                    ),
+                "pct_above_ema50":
+                    round(
+                        pct_above_ema50,
+                        4,
+                    ),
+                "pct_above_ema200":
+                    round(
+                        pct_above_ema200,
+                        4,
+                    ),
+                "up_volume":
+                    up_volume,
+                "down_volume":
+                    down_volume,
+                "breadth_score":
+                    breadth_score,
+                "source_id":
+                    source_id,
+            }
+        )
+
+    return output

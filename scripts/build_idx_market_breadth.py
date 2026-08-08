@@ -1,10 +1,11 @@
 import argparse
-from typing import Any
+from time import perf_counter
 
 from imi.db import engine
 from imi.features.market_breadth import (
     build_universe_code,
-    calculate_breadth_score,
+    prepare_breadth_rows,
+    resolve_build_mode,
 )
 from imi.features.technical import (
     FEATURE_VERSION,
@@ -14,8 +15,10 @@ from imi.repositories.equity_eod import (
 )
 from imi.repositories.market_breadth import (
     get_existing_coverage,
+    get_latest_eligible_feature_date,
     get_latest_snapshot_date,
     load_daily_breadth_inputs,
+    load_incremental_breadth_inputs,
     upsert_breadth_rows,
 )
 
@@ -29,8 +32,8 @@ def parse_args() -> argparse.Namespace:
         "--force",
         action="store_true",
         help=(
-            "Recalculate and upsert all "
-            "breadth rows."
+            "Force a full historical "
+            "breadth recalculation."
         ),
     )
 
@@ -43,169 +46,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def prepare_breadth_rows(
-    *,
-    inputs: list[dict[str, Any]],
-    universe_code: str,
-    source_id: object,
-) -> list[dict[str, Any]]:
-    output: list[
-        dict[str, Any]
-    ] = []
-
-    for item in inputs:
-        advances = int(
-            item["advances"]
-        )
-
-        declines = int(
-            item["declines"]
-        )
-
-        unchanged = int(
-            item["unchanged"]
-        )
-
-        eligible_count = int(
-            item["eligible_count"]
-        )
-
-        directional_total = (
-            advances
-            + declines
-            + unchanged
-        )
-
-        if (
-            directional_total
-            != eligible_count
-        ):
-            raise RuntimeError(
-                "Breadth population mismatch "
-                f"on {item['trading_date']}: "
-                f"eligible={eligible_count}, "
-                f"A+D+U={directional_total}"
-            )
-
-        new_high_20d = int(
-            item["new_high_20d"]
-        )
-
-        new_low_20d = int(
-            item["new_low_20d"]
-        )
-
-        new_high_52w = int(
-            item["new_high_52w"]
-        )
-
-        new_low_52w = int(
-            item["new_low_52w"]
-        )
-
-        pct_above_ema20 = float(
-            item["pct_above_ema20"]
-        )
-
-        pct_above_ema50 = float(
-            item["pct_above_ema50"]
-        )
-
-        pct_above_ema200 = float(
-            item["pct_above_ema200"]
-        )
-
-        up_volume = float(
-            item["up_volume"]
-        )
-
-        down_volume = float(
-            item["down_volume"]
-        )
-
-        breadth_score = (
-            calculate_breadth_score(
-                advances=advances,
-                declines=declines,
-                unchanged=unchanged,
-                new_high_20d=(
-                    new_high_20d
-                ),
-                new_low_20d=(
-                    new_low_20d
-                ),
-                new_high_52w=(
-                    new_high_52w
-                ),
-                new_low_52w=(
-                    new_low_52w
-                ),
-                pct_above_ema20=(
-                    pct_above_ema20
-                ),
-                pct_above_ema50=(
-                    pct_above_ema50
-                ),
-                pct_above_ema200=(
-                    pct_above_ema200
-                ),
-                up_volume=up_volume,
-                down_volume=(
-                    down_volume
-                ),
-            )
-        )
-
-        output.append(
-            {
-                "trading_date":
-                    item["trading_date"],
-                "universe_code":
-                    universe_code,
-                "advances":
-                    advances,
-                "declines":
-                    declines,
-                "unchanged":
-                    unchanged,
-                "new_high_20d":
-                    new_high_20d,
-                "new_low_20d":
-                    new_low_20d,
-                "new_high_52w":
-                    new_high_52w,
-                "new_low_52w":
-                    new_low_52w,
-                "pct_above_ema20":
-                    round(
-                        pct_above_ema20,
-                        4,
-                    ),
-                "pct_above_ema50":
-                    round(
-                        pct_above_ema50,
-                        4,
-                    ),
-                "pct_above_ema200":
-                    round(
-                        pct_above_ema200,
-                        4,
-                    ),
-                "up_volume":
-                    up_volume,
-                "down_volume":
-                    down_volume,
-                "breadth_score":
-                    breadth_score,
-                "source_id":
-                    source_id,
-            }
-        )
-
-    return output
-
-
 def main() -> None:
+    started = perf_counter()
+
     args = parse_args()
 
     if args.batch_size <= 0:
@@ -213,6 +56,16 @@ def main() -> None:
             "batch-size must be "
             "greater than zero."
         )
+
+    print(
+        "Indonesia Market Intelligence"
+    )
+    print(
+        "IDX Market Breadth"
+    )
+    print(
+        "-----------------------------"
+    )
 
     with engine.connect() as connection:
         source_id = get_source_id(
@@ -226,30 +79,163 @@ def main() -> None:
             )
         )
 
-        inputs = (
-            load_daily_breadth_inputs(
+    universe_code = (
+        build_universe_code(
+            snapshot_date
+        )
+    )
+
+    with engine.connect() as connection:
+        latest_input_date = (
+            get_latest_eligible_feature_date(
                 connection,
                 snapshot_date=(
                     snapshot_date
                 ),
-                source_id=source_id,
                 feature_version=(
                     FEATURE_VERSION
                 ),
             )
         )
 
-    if not inputs:
-        raise RuntimeError(
-            "No eligible breadth inputs "
-            "were generated."
+        existing = (
+            get_existing_coverage(
+                connection,
+                universe_code=(
+                    universe_code
+                ),
+            )
         )
 
-    universe_code = (
-        build_universe_code(
-            snapshot_date
-        )
+    existing_rows = int(
+        existing["rows"]
     )
+
+    existing_last_date = (
+        existing["last_date"]
+    )
+
+    mode = resolve_build_mode(
+        existing_rows=(
+            existing_rows
+        ),
+        existing_last_date=(
+            existing_last_date
+        ),
+        latest_input_date=(
+            latest_input_date
+        ),
+        force=args.force,
+    )
+
+    print(
+        f"Feature version : "
+        f"{FEATURE_VERSION}"
+    )
+    print(
+        f"Snapshot date   : "
+        f"{snapshot_date}"
+    )
+    print(
+        f"Universe code   : "
+        f"{universe_code}"
+    )
+    print(
+        f"Latest input    : "
+        f"{latest_input_date}"
+    )
+    print(
+        f"Existing rows   : "
+        f"{existing_rows}"
+    )
+    print(
+        f"Existing last   : "
+        f"{existing_last_date}"
+    )
+    print(
+        f"Build mode      : "
+        f"{mode}"
+    )
+    print()
+
+    if mode == "UP_TO_DATE":
+        elapsed = (
+            perf_counter()
+            - started
+        )
+
+        print(
+            "Breadth dataset is already "
+            "up-to-date."
+        )
+        print(
+            "Rows written    : 0"
+        )
+        print(
+            f"Elapsed seconds : "
+            f"{elapsed:.3f}"
+        )
+        return
+
+    if mode == "FULL":
+        print(
+            "Loading full historical "
+            "breadth inputs..."
+        )
+
+        with engine.connect() as connection:
+            inputs = (
+                load_daily_breadth_inputs(
+                    connection,
+                    snapshot_date=(
+                        snapshot_date
+                    ),
+                    source_id=(
+                        source_id
+                    ),
+                    feature_version=(
+                        FEATURE_VERSION
+                    ),
+                )
+            )
+
+    else:
+        if existing_last_date is None:
+            raise RuntimeError(
+                "Incremental mode requires "
+                "an existing last date."
+            )
+
+        print(
+            "Loading incremental breadth "
+            f"after {existing_last_date}..."
+        )
+
+        with engine.connect() as connection:
+            inputs = (
+                load_incremental_breadth_inputs(
+                    connection,
+                    snapshot_date=(
+                        snapshot_date
+                    ),
+                    source_id=(
+                        source_id
+                    ),
+                    feature_version=(
+                        FEATURE_VERSION
+                    ),
+                    after_date=(
+                        existing_last_date
+                    ),
+                )
+            )
+
+    if not inputs:
+        raise RuntimeError(
+            "No breadth inputs were "
+            "generated for build mode "
+            f"{mode}."
+        )
 
     rows = prepare_breadth_rows(
         inputs=inputs,
@@ -265,72 +251,31 @@ def main() -> None:
         rows[-1]["trading_date"]
     )
 
-    with engine.connect() as connection:
-        existing = (
-            get_existing_coverage(
-                connection,
-                universe_code=(
-                    universe_code
-                ),
-            )
+    if (
+        mode == "INCREMENTAL"
+        and generated_last
+        != latest_input_date
+    ):
+        raise RuntimeError(
+            "Incremental breadth did not "
+            "reach latest input date: "
+            f"generated={generated_last}, "
+            f"expected={latest_input_date}."
         )
 
-    is_up_to_date = (
-        int(existing["rows"])
-        == len(rows)
-        and existing["first_date"]
-        == generated_first
-        and existing["last_date"]
-        == generated_last
-    )
-
-    print(
-        "Indonesia Market Intelligence"
-    )
-    print(
-        "IDX Market Breadth"
-    )
-    print(
-        "-----------------------------"
-    )
-    print(
-        f"Feature version : "
-        f"{FEATURE_VERSION}"
-    )
-    print(
-        f"Snapshot date   : "
-        f"{snapshot_date}"
-    )
-    print(
-        f"Universe code   : "
-        f"{universe_code}"
-    )
     print(
         f"Generated dates : "
         f"{len(rows)}"
     )
     print(
-        f"First date      : "
+        f"First generated : "
         f"{generated_first}"
     )
     print(
-        f"Last date       : "
+        f"Last generated  : "
         f"{generated_last}"
     )
     print()
-
-    if (
-        is_up_to_date
-        and not args.force
-    ):
-        print(
-            "Breadth dataset is already "
-            "up-to-date."
-        )
-        print(
-            "Rows written: 0"
-        )
-        return
 
     with engine.begin() as connection:
         written = upsert_breadth_rows(
@@ -349,8 +294,18 @@ def main() -> None:
         + latest["unchanged"]
     )
 
+    elapsed = (
+        perf_counter()
+        - started
+    )
+
     print(
-        f"Rows written    : {written}"
+        f"Rows written    : "
+        f"{written}"
+    )
+    print(
+        f"Elapsed seconds : "
+        f"{elapsed:.3f}"
     )
 
     print()

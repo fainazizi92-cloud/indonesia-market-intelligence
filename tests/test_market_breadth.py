@@ -1,8 +1,11 @@
 from datetime import date
 
+import pytest
+
 from imi.features.market_breadth import (
     build_universe_code,
     calculate_breadth_score,
+    resolve_build_mode,
 )
 
 
@@ -78,3 +81,93 @@ def test_maximum_bearish_breadth_score() -> None:
     )
 
     assert score == 0.0
+
+
+def test_build_mode_full_when_empty() -> None:
+    mode = resolve_build_mode(
+        existing_rows=0,
+        existing_last_date=None,
+        latest_input_date=date(
+            2026,
+            8,
+            6,
+        ),
+        force=False,
+    )
+
+    assert mode == "FULL"
+
+
+def test_build_mode_up_to_date() -> None:
+    latest = date(
+        2026,
+        8,
+        6,
+    )
+
+    mode = resolve_build_mode(
+        existing_rows=6362,
+        existing_last_date=latest,
+        latest_input_date=latest,
+        force=False,
+    )
+
+    assert mode == "UP_TO_DATE"
+
+
+def test_build_mode_incremental() -> None:
+    mode = resolve_build_mode(
+        existing_rows=6361,
+        existing_last_date=date(
+            2026,
+            8,
+            5,
+        ),
+        latest_input_date=date(
+            2026,
+            8,
+            6,
+        ),
+        force=False,
+    )
+
+    assert mode == "INCREMENTAL"
+
+
+def test_force_uses_full_mode() -> None:
+    mode = resolve_build_mode(
+        existing_rows=6362,
+        existing_last_date=date(
+            2026,
+            8,
+            6,
+        ),
+        latest_input_date=date(
+            2026,
+            8,
+            6,
+        ),
+        force=True,
+    )
+
+    assert mode == "FULL"
+
+
+def test_build_mode_rejects_breadth_ahead() -> None:
+    with pytest.raises(
+        RuntimeError
+    ):
+        resolve_build_mode(
+            existing_rows=6362,
+            existing_last_date=date(
+                2026,
+                8,
+                7,
+            ),
+            latest_input_date=date(
+                2026,
+                8,
+                6,
+            ),
+            force=False,
+        )
