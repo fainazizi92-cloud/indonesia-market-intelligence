@@ -1,5 +1,7 @@
 from datetime import date
 
+import pytest
+
 from imi.features.sector_rotation import (
     build_sector_model_version,
     calculate_relative_strength_score,
@@ -7,6 +9,8 @@ from imi.features.sector_rotation import (
     calculate_sector_composite_score,
     calculate_volume_score,
     classify_rotation,
+    prepare_sector_score_rows,
+    resolve_sector_build_mode,
 )
 
 
@@ -109,3 +113,181 @@ def test_lagging_rotation() -> None:
     )
 
     assert label == "LAGGING"
+
+
+def test_build_mode_full_when_empty() -> None:
+    mode = resolve_sector_build_mode(
+        existing_last_date=None,
+        existing_latest_sector_count=0,
+        latest_input_date=date(
+            2026,
+            8,
+            6,
+        ),
+        latest_input_sector_count=11,
+        force=False,
+    )
+
+    assert mode == "FULL"
+
+
+def test_build_mode_up_to_date() -> None:
+    latest = date(
+        2026,
+        8,
+        6,
+    )
+
+    mode = resolve_sector_build_mode(
+        existing_last_date=latest,
+        existing_latest_sector_count=11,
+        latest_input_date=latest,
+        latest_input_sector_count=11,
+        force=False,
+    )
+
+    assert mode == "UP_TO_DATE"
+
+
+def test_build_mode_incremental() -> None:
+    mode = resolve_sector_build_mode(
+        existing_last_date=date(
+            2026,
+            8,
+            5,
+        ),
+        existing_latest_sector_count=11,
+        latest_input_date=date(
+            2026,
+            8,
+            6,
+        ),
+        latest_input_sector_count=11,
+        force=False,
+    )
+
+    assert mode == "INCREMENTAL"
+
+
+def test_incomplete_latest_sector_state_forces_full() -> None:
+    mode = resolve_sector_build_mode(
+        existing_last_date=date(
+            2026,
+            8,
+            6,
+        ),
+        existing_latest_sector_count=10,
+        latest_input_date=date(
+            2026,
+            8,
+            6,
+        ),
+        latest_input_sector_count=11,
+        force=False,
+    )
+
+    assert mode == "FULL"
+
+
+def test_force_uses_full_mode() -> None:
+    mode = resolve_sector_build_mode(
+        existing_last_date=date(
+            2026,
+            8,
+            6,
+        ),
+        existing_latest_sector_count=11,
+        latest_input_date=date(
+            2026,
+            8,
+            6,
+        ),
+        latest_input_sector_count=11,
+        force=True,
+    )
+
+    assert mode == "FULL"
+
+
+def test_build_mode_rejects_stored_data_ahead() -> None:
+    with pytest.raises(
+        RuntimeError
+    ):
+        resolve_sector_build_mode(
+            existing_last_date=date(
+                2026,
+                8,
+                7,
+            ),
+            existing_latest_sector_count=11,
+            latest_input_date=date(
+                2026,
+                8,
+                6,
+            ),
+            latest_input_sector_count=11,
+            force=False,
+        )
+
+
+def test_incremental_history_affects_rotation_label() -> None:
+    prior_history = {
+        "IDXBASIC": [
+            40.0
+            for _ in range(20)
+        ]
+    }
+
+    inputs = [
+        {
+            "trading_date":
+                date(
+                    2026,
+                    8,
+                    6,
+                ),
+            "sector_code":
+                "IDXBASIC",
+            "eligible_count":
+                100,
+            "sector_return_20d":
+                0.10,
+            "sector_return_60d":
+                0.10,
+            "ihsg_return_20d":
+                0.10,
+            "ihsg_return_60d":
+                0.10,
+            "advances":
+                50,
+            "declines":
+                50,
+            "unchanged":
+                0,
+            "pct_above_ema20":
+                50.0,
+            "pct_above_ema50":
+                50.0,
+            "pct_above_ema200":
+                50.0,
+            "up_volume":
+                100.0,
+            "down_volume":
+                100.0,
+        }
+    ]
+
+    rows = prepare_sector_score_rows(
+        inputs=inputs,
+        model_version="test",
+        prior_score_history=(
+            prior_history
+        ),
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["score"] == 50.0
+    assert (
+        rows[0]["rotation_label"]
+        == "IMPROVING"
+    )

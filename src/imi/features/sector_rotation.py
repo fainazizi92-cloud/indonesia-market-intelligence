@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 SECTOR_ROTATION_VERSION = "sector_rotation_v1"
 
@@ -29,6 +29,12 @@ BREADTH_DIRECTION_WEIGHT = 0.30
 
 ROTATION_LOOKBACK = 20
 
+SectorBuildMode = Literal[
+    "FULL",
+    "INCREMENTAL",
+    "UP_TO_DATE",
+]
+
 
 def build_sector_model_version(
     snapshot_date: date,
@@ -38,6 +44,40 @@ def build_sector_model_version(
         f"_current_{snapshot_date:%Y%m%d}"
         "_yahoo_eod"
     )
+
+
+def resolve_sector_build_mode(
+    *,
+    existing_last_date: date | None,
+    existing_latest_sector_count: int,
+    latest_input_date: date,
+    latest_input_sector_count: int,
+    force: bool,
+) -> SectorBuildMode:
+    if force:
+        return "FULL"
+
+    if existing_last_date is None:
+        return "FULL"
+
+    if existing_last_date > latest_input_date:
+        raise RuntimeError(
+            "Sector rotation data is ahead "
+            "of sector input data: "
+            f"stored={existing_last_date}, "
+            f"input={latest_input_date}."
+        )
+
+    if (
+        existing_latest_sector_count
+        != latest_input_sector_count
+    ):
+        return "FULL"
+
+    if existing_last_date == latest_input_date:
+        return "UP_TO_DATE"
+
+    return "INCREMENTAL"
 
 
 def _clamp(
@@ -228,11 +268,22 @@ def prepare_sector_score_rows(
     *,
     inputs: list[dict[str, Any]],
     model_version: str,
+    prior_score_history: (
+        dict[str, list[float]]
+        | None
+    ) = None,
 ) -> list[dict[str, Any]]:
     histories: dict[
         str,
         list[float],
     ] = {}
+
+    if prior_score_history:
+        histories = {
+            sector_code: list(scores)
+            for sector_code, scores
+            in prior_score_history.items()
+        }
 
     output: list[
         dict[str, Any]
@@ -362,14 +413,21 @@ def prepare_sector_score_rows(
                 ]
             )
 
-        rotation_label = classify_rotation(
-            score=score,
-            score_change_20d=(
-                score_change_20d
-            ),
+        rotation_label = (
+            classify_rotation(
+                score=score,
+                score_change_20d=(
+                    score_change_20d
+                ),
+            )
         )
 
         history.append(score)
+
+        if len(history) > ROTATION_LOOKBACK:
+            del history[
+                :-ROTATION_LOOKBACK
+            ]
 
         output.append(
             {
