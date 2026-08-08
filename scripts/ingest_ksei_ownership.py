@@ -1,11 +1,17 @@
 import argparse
+from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from time import perf_counter
+from typing import Any
+from uuid import UUID
 
 from imi.db import engine
 from imi.ksei_holding import (
     build_holder_details,
+    extract_archive_snapshot_date,
     parse_ksei_holding_archive,
+    validate_archive_identity,
 )
 from imi.repositories.equity_eod import (
     get_source_id,
@@ -15,6 +21,18 @@ from imi.repositories.ownership import (
     get_ownership_coverage,
     upsert_ownership_rows,
 )
+
+DEFAULT_BATCH_SIZE = 1000
+
+
+@dataclass(frozen=True)
+class PreparedArchive:
+    path: Path
+    member_name: str
+    snapshot_date: date
+    valid_equities: int
+    rows: list[dict[str, Any]]
+    unmapped_codes: tuple[str, ...]
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,15 +48,29 @@ def parse_args() -> argparse.Namespace:
         "path",
         type=Path,
         help=(
-            "KSEI ZIP file or directory "
-            "containing KSEI ZIP files."
+            "KSEI ZIP archive or "
+            "directory containing "
+            "KSEI archives."
         ),
     )
 
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=1000,
+        default=DEFAULT_BATCH_SIZE,
+        help=(
+            "Database upsert batch size."
+        ),
+    )
+
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Parse and validate all "
+            "archives without writing "
+            "to PostgreSQL."
+        ),
     )
 
     return parser.parse_args()
@@ -55,20 +87,27 @@ def resolve_archives(
         )
 
     if path.is_file():
-        if path.suffix.lower() != ".zip":
+        if (
+            path.suffix.lower()
+            != ".zip"
+        ):
             raise ValueError(
                 "Input file must be ZIP."
             )
 
+        extract_archive_snapshot_date(
+            path
+        )
+
         return [path]
 
-    archives = sorted(
+    archives = [
         item
         for item in path.glob(
             "BalanceposEfek*.zip"
         )
         if item.is_file()
-    )
+    ]
 
     if not archives:
         raise RuntimeError(
@@ -76,7 +115,194 @@ def resolve_archives(
             "archives found."
         )
 
-    return archives
+    for archive in archives:
+        extract_archive_snapshot_date(
+            archive
+        )
+
+    return sorted(
+        archives,
+        key=extract_archive_snapshot_date,
+    )
+
+
+def find_duplicate_codes(
+    codes: list[str],
+) -> list[str]:
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+
+    for code in codes:
+        if code in seen:
+            duplicates.add(
+                code
+            )
+        else:
+            seen.add(
+                code
+            )
+
+    return sorted(
+        duplicates
+    )
+
+
+def prepare_archive(
+    *,
+    archive_path: Path,
+    instrument_map: dict[str, UUID],
+    source_id: UUID,
+) -> PreparedArchive:
+    (
+        records,
+        rejected,
+        member_name,
+    ) = parse_ksei_holding_archive(
+        archive_path,
+        equity_only=True,
+    )
+
+    if rejected:
+        raise RuntimeError(
+            f"{archive_path.name}: "
+            f"{len(rejected)} rejected "
+            "EQUITY records. "
+            f"Sample: {rejected[:5]}"
+        )
+
+    snapshot_date = (
+        validate_archive_identity(
+            archive_path=archive_path,
+            member_name=member_name,
+            records=records,
+        )
+    )
+
+    codes = [
+        record.code
+        for record in records
+    ]
+
+    duplicate_codes = (
+        find_duplicate_codes(
+            codes
+        )
+    )
+
+    if duplicate_codes:
+        raise RuntimeError(
+            f"{archive_path.name}: "
+            "duplicate EQUITY codes "
+            "found: "
+            f"{duplicate_codes[:20]}"
+        )
+
+    rows: list[
+        dict[str, Any]
+    ] = []
+
+    unmapped_codes: list[str] = []
+
+    for record in records:
+        instrument_id = (
+            instrument_map.get(
+                record.code
+            )
+        )
+
+        if instrument_id is None:
+            unmapped_codes.append(
+                record.code
+            )
+            continue
+
+        rows.append(
+            {
+                "instrument_id":
+                    instrument_id,
+                "as_of_date":
+                    record.as_of_date,
+
+                # These fields are NOT
+                # inferred from the KSEI
+                # holding-composition file.
+                "free_float_pct":
+                    None,
+                "hsc_flag":
+                    None,
+                "concentration_score":
+                    None,
+
+                "foreign_ownership_pct":
+                    round(
+                        record
+                        .foreign_ownership_pct,
+                        8,
+                    ),
+
+                "holder_details":
+                    build_holder_details(
+                        record,
+                        archive_name=(
+                            archive_path.name
+                        ),
+                        member_name=(
+                            member_name
+                        ),
+                    ),
+
+                "source_id":
+                    source_id,
+            }
+        )
+
+    if not rows:
+        raise RuntimeError(
+            f"{archive_path.name}: "
+            "no records mapped to "
+            "the IDX instrument master."
+        )
+
+    return PreparedArchive(
+        path=archive_path,
+        member_name=member_name,
+        snapshot_date=snapshot_date,
+        valid_equities=len(
+            records
+        ),
+        rows=rows,
+        unmapped_codes=tuple(
+            sorted(
+                unmapped_codes
+            )
+        ),
+    )
+
+
+def validate_unique_snapshot_dates(
+    prepared: list[PreparedArchive],
+) -> None:
+    seen: dict[
+        date,
+        str,
+    ] = {}
+
+    for item in prepared:
+        previous = seen.get(
+            item.snapshot_date
+        )
+
+        if previous is not None:
+            raise RuntimeError(
+                "Duplicate KSEI snapshot "
+                f"date {item.snapshot_date}: "
+                f"{previous} and "
+                f"{item.path.name}"
+            )
+
+        seen[
+            item.snapshot_date
+        ] = item.path.name
 
 
 def main() -> None:
@@ -123,159 +349,124 @@ def main() -> None:
         f"IDX instruments : "
         f"{len(instrument_map)}"
     )
+    print(
+        f"Dry run         : "
+        f"{args.dry_run}"
+    )
     print()
 
-    total_parsed = 0
-    total_rejected = 0
-    total_mapped = 0
-    total_unmapped = 0
-    total_written = 0
+    print(
+        "Preflight validation..."
+    )
 
-    unmapped_codes: set[str] = set()
+    prepared: list[
+        PreparedArchive
+    ] = []
 
     for archive_path in archives:
-        print(
-            f"Processing: "
-            f"{archive_path.name}"
+        item = prepare_archive(
+            archive_path=archive_path,
+            instrument_map=instrument_map,
+            source_id=source_id,
         )
 
-        (
-            records,
-            rejected,
-            member_name,
-        ) = parse_ksei_holding_archive(
-            archive_path,
-            equity_only=True,
+        prepared.append(
+            item
         )
-
-        total_parsed += len(
-            records
-        )
-
-        total_rejected += len(
-            rejected
-        )
-
-        rows = []
-
-        snapshot_dates = {
-            record.as_of_date
-            for record in records
-        }
-
-        if len(snapshot_dates) != 1:
-            raise RuntimeError(
-                f"{archive_path.name}: "
-                "expected exactly one "
-                "snapshot date."
-            )
-
-        snapshot_date = next(
-            iter(snapshot_dates)
-        )
-
-        for record in records:
-            instrument_id = (
-                instrument_map.get(
-                    record.code
-                )
-            )
-
-            if instrument_id is None:
-                total_unmapped += 1
-
-                unmapped_codes.add(
-                    record.code
-                )
-
-                continue
-
-            total_mapped += 1
-
-            rows.append(
-                {
-                    "instrument_id":
-                        instrument_id,
-                    "as_of_date":
-                        record.as_of_date,
-
-                    # Do not infer these
-                    # from KSEI holdings.
-                    "free_float_pct":
-                        None,
-                    "hsc_flag":
-                        None,
-                    "concentration_score":
-                        None,
-
-                    "foreign_ownership_pct":
-                        round(
-                            record
-                            .foreign_ownership_pct,
-                            8,
-                        ),
-
-                    "holder_details":
-                        build_holder_details(
-                            record,
-                            archive_name=(
-                                archive_path.name
-                            ),
-                            member_name=(
-                                member_name
-                            ),
-                        ),
-
-                    "source_id":
-                        source_id,
-                }
-            )
-
-        with engine.begin() as connection:
-            written = (
-                upsert_ownership_rows(
-                    connection,
-                    rows=rows,
-                    batch_size=(
-                        args.batch_size
-                    ),
-                )
-            )
-
-        total_written += written
 
         print(
-            f"  Snapshot      : "
-            f"{snapshot_date}"
-        )
-        print(
-            f"  Valid EQUITY  : "
-            f"{len(records)}"
-        )
-        print(
-            f"  Rejected      : "
-            f"{len(rejected)}"
-        )
-        print(
-            f"  Mapped        : "
-            f"{len(rows)}"
-        )
-        print(
-            f"  Written       : "
-            f"{written}"
+            f"  {item.snapshot_date} | "
+            f"{item.path.name} | "
+            f"valid="
+            f"{item.valid_equities} | "
+            f"mapped="
+            f"{len(item.rows)} | "
+            f"unmapped="
+            f"{len(item.unmapped_codes)}"
         )
 
-        if rejected:
-            print(
-                "  Rejected sample:"
-            )
+    validate_unique_snapshot_dates(
+        prepared
+    )
 
-            for item in rejected[:5]:
-                print(
-                    f"    {item}"
-                )
+    print()
+    print(
+        "Preflight result : PASS"
+    )
+
+    total_rows = sum(
+        len(item.rows)
+        for item in prepared
+    )
+
+    all_unmapped = {
+        code
+        for item in prepared
+        for code in item.unmapped_codes
+    }
+
+    if args.dry_run:
+        elapsed = (
+            perf_counter()
+            - started
+        )
 
         print()
+        print(
+            "DRY RUN - database was "
+            "not modified."
+        )
+        print(
+            f"Rows ready      : "
+            f"{total_rows}"
+        )
+        print(
+            f"Unique unmapped : "
+            f"{len(all_unmapped)}"
+        )
+        print(
+            f"Elapsed seconds : "
+            f"{elapsed:.3f}"
+        )
+
+        if all_unmapped:
+            print()
+            print(
+                "Historical/current-universe "
+                "unmapped codes:"
+            )
+            print(
+                ", ".join(
+                    sorted(
+                        all_unmapped
+                    )
+                )
+            )
+
+        return
+
+    rows = [
+        row
+        for item in prepared
+        for row in item.rows
+    ]
+
+    print()
+    print(
+        "Writing ownership snapshots "
+        "in one transaction..."
+    )
+
+    with engine.begin() as connection:
+        written = (
+            upsert_ownership_rows(
+                connection,
+                rows=rows,
+                batch_size=(
+                    args.batch_size
+                ),
+            )
+        )
 
     with engine.connect() as connection:
         coverage = (
@@ -292,28 +483,21 @@ def main() -> None:
         - started
     )
 
+    print()
     print(
         "Summary:"
     )
     print(
-        f"Parsed valid    : "
-        f"{total_parsed}"
+        f"Archives        : "
+        f"{len(prepared)}"
     )
     print(
-        f"Rejected        : "
-        f"{total_rejected}"
+        f"Rows upserted   : "
+        f"{written}"
     )
     print(
-        f"Mapped          : "
-        f"{total_mapped}"
-    )
-    print(
-        f"Unmapped        : "
-        f"{total_unmapped}"
-    )
-    print(
-        f"Rows written    : "
-        f"{total_written}"
+        f"Unique unmapped : "
+        f"{len(all_unmapped)}"
     )
 
     print()
@@ -340,26 +524,23 @@ def main() -> None:
         f"Last date       : "
         f"{coverage['last_date']}"
     )
-
-    print()
     print(
         f"Elapsed seconds : "
         f"{elapsed:.3f}"
     )
 
-    if unmapped_codes:
+    if all_unmapped:
         print()
         print(
-            "Unmapped KSEI codes "
-            f"({len(unmapped_codes)}):"
+            "Historical/current-universe "
+            "unmapped codes:"
         )
-
-        sample = sorted(
-            unmapped_codes
-        )[:50]
-
         print(
-            ", ".join(sample)
+            ", ".join(
+                sorted(
+                    all_unmapped
+                )
+            )
         )
 
     print()
@@ -367,9 +548,14 @@ def main() -> None:
         "IMPORTANT:"
     )
     print(
-        "KSEI ownership snapshots "
-        "are not daily foreign "
-        "buy/sell flow."
+        "Ownership snapshots are not "
+        "daily foreign trading flow."
+    )
+    print(
+        "Historical mapping currently "
+        "uses the current IDX instrument "
+        "master and is therefore "
+        "survivorship-biased."
     )
     print(
         "free_float_pct, hsc_flag, "

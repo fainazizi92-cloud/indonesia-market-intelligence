@@ -1,3 +1,4 @@
+import json
 from typing import Any
 from uuid import UUID
 
@@ -109,7 +110,7 @@ def get_ownership_coverage(
         OWNERSHIP_COVERAGE,
         {
             "source_id":
-                source_id
+                source_id,
         },
     ).mappings().one()
 
@@ -125,7 +126,11 @@ def upsert_ownership_rows(
     if not rows:
         return 0
 
-    import json
+    if batch_size <= 0:
+        raise ValueError(
+            "batch_size must be "
+            "greater than zero."
+        )
 
     total = 0
 
@@ -142,7 +147,9 @@ def upsert_ownership_rows(
         serialized_batch = []
 
         for row in batch:
-            serialized = dict(row)
+            serialized = dict(
+                row
+            )
 
             serialized[
                 "holder_details"

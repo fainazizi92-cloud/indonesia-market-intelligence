@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import re
 from dataclasses import dataclass
 from datetime import date
 from io import StringIO
@@ -15,6 +16,34 @@ KSEI_HOLDING_FORMAT_VERSION = (
 
 EXPECTED_COLUMN_COUNT = 25
 
+EXPECTED_HEADER = (
+    "Date",
+    "Code",
+    "Type",
+    "Sec. Num",
+    "Price",
+    "Local IS",
+    "Local CP",
+    "Local PF",
+    "Local IB",
+    "Local ID",
+    "Local MF",
+    "Local SC",
+    "Local FD",
+    "Local OT",
+    "Total",
+    "Foreign IS",
+    "Foreign CP",
+    "Foreign PF",
+    "Foreign IB",
+    "Foreign ID",
+    "Foreign MF",
+    "Foreign SC",
+    "Foreign FD",
+    "Foreign OT",
+    "Total",
+)
+
 INVESTOR_CATEGORIES = (
     "IS",
     "CP",
@@ -25,6 +54,16 @@ INVESTOR_CATEGORIES = (
     "SC",
     "FD",
     "OT",
+)
+
+ARCHIVE_FILENAME_PATTERN = re.compile(
+    r"^BalanceposEfek(?P<date>\d{8})\.zip$",
+    re.IGNORECASE,
+)
+
+MEMBER_FILENAME_PATTERN = re.compile(
+    r"^Balancepos(?P<date>\d{8})\.txt$",
+    re.IGNORECASE,
 )
 
 
@@ -95,6 +134,7 @@ def _parse_integer(
 
     try:
         return int(cleaned)
+
     except ValueError as exc:
         raise ValueError(
             f"Invalid integer for "
@@ -116,6 +156,7 @@ def _parse_float(
 
     try:
         return float(cleaned)
+
     except ValueError as exc:
         raise ValueError(
             f"Invalid number for "
@@ -137,11 +178,84 @@ def _parse_date(
             parsed.tm_mon,
             parsed.tm_mday,
         )
+
     except ValueError as exc:
         raise ValueError(
             f"Invalid KSEI date: "
             f"{value!r}"
         ) from exc
+
+
+def _parse_compact_date(
+    value: str,
+) -> date:
+    if (
+        len(value) != 8
+        or not value.isdigit()
+    ):
+        raise ValueError(
+            f"Invalid compact date: "
+            f"{value!r}"
+        )
+
+    try:
+        return date(
+            int(value[0:4]),
+            int(value[4:6]),
+            int(value[6:8]),
+        )
+
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid compact date: "
+            f"{value!r}"
+        ) from exc
+
+
+def extract_archive_snapshot_date(
+    archive_path: Path,
+) -> date:
+    match = (
+        ARCHIVE_FILENAME_PATTERN.fullmatch(
+            archive_path.name
+        )
+    )
+
+    if match is None:
+        raise ValueError(
+            "Unexpected KSEI archive "
+            "filename: "
+            f"{archive_path.name}"
+        )
+
+    return _parse_compact_date(
+        match.group("date")
+    )
+
+
+def extract_member_snapshot_date(
+    member_name: str,
+) -> date:
+    filename = Path(
+        member_name
+    ).name
+
+    match = (
+        MEMBER_FILENAME_PATTERN.fullmatch(
+            filename
+        )
+    )
+
+    if match is None:
+        raise ValueError(
+            "Unexpected KSEI archive "
+            "member filename: "
+            f"{filename}"
+        )
+
+    return _parse_compact_date(
+        match.group("date")
+    )
 
 
 def decode_ksei_text(
@@ -157,6 +271,7 @@ def decode_ksei_text(
             return raw.decode(
                 encoding
             )
+
         except UnicodeDecodeError:
             continue
 
@@ -320,12 +435,13 @@ def validate_ksei_record(
         record.local.values()
     )
 
-    if calculated_local != (
-        record.local_total
+    if (
+        calculated_local
+        != record.local_total
     ):
         errors.append(
-            "Local category sum does not "
-            "match Local Total: "
+            "Local category sum does "
+            "not match Local Total: "
             f"sum={calculated_local}, "
             f"total={record.local_total}."
         )
@@ -334,8 +450,9 @@ def validate_ksei_record(
         record.foreign.values()
     )
 
-    if calculated_foreign != (
-        record.foreign_total
+    if (
+        calculated_foreign
+        != record.foreign_total
     ):
         errors.append(
             "Foreign category sum does "
@@ -433,12 +550,22 @@ def parse_ksei_holding_archive(
             "KSEI file is empty."
         ) from exc
 
-    if len(header) != (
-        EXPECTED_COLUMN_COUNT
-    ):
+    if len(header) != EXPECTED_COLUMN_COUNT:
         raise RuntimeError(
             "Unexpected KSEI header "
             f"column count: {len(header)}"
+        )
+
+    normalized_header = tuple(
+        value.strip()
+        for value in header
+    )
+
+    if normalized_header != EXPECTED_HEADER:
+        raise RuntimeError(
+            "Unexpected KSEI header layout. "
+            "The archive format may have "
+            "changed."
         )
 
     records: list[
@@ -458,14 +585,12 @@ def parse_ksei_holding_archive(
         if not row:
             continue
 
-        # When only equities are requested,
-        # skip other security types before
-        # parsing numeric equity fields.
+        # Non-equity securities can contain
+        # empty fields that are valid for
+        # their own security type.
         #
-        # This prevents non-equity rows with
-        # intentionally empty fields from
-        # being classified as rejected
-        # equity records.
+        # Skip them before parsing equity
+        # numeric fields.
         if (
             equity_only
             and len(row) >= 3
@@ -539,10 +664,8 @@ def parse_ksei_holding_archive(
 
             continue
 
-        errors = (
-            validate_ksei_record(
-                record
-            )
+        errors = validate_ksei_record(
+            record
         )
 
         if errors:
@@ -571,6 +694,70 @@ def parse_ksei_holding_archive(
         member_name,
     )
 
+
+def validate_archive_identity(
+    *,
+    archive_path: Path,
+    member_name: str,
+    records: list[KseiHoldingRecord],
+) -> date:
+    archive_date = (
+        extract_archive_snapshot_date(
+            archive_path
+        )
+    )
+
+    member_date = (
+        extract_member_snapshot_date(
+            member_name
+        )
+    )
+
+    if not records:
+        raise RuntimeError(
+            f"{archive_path.name}: "
+            "archive contains no valid "
+            "EQUITY records."
+        )
+
+    record_dates = {
+        record.as_of_date
+        for record in records
+    }
+
+    if len(record_dates) != 1:
+        raise RuntimeError(
+            f"{archive_path.name}: "
+            "archive contains multiple "
+            f"snapshot dates: "
+            f"{sorted(record_dates)}"
+        )
+
+    record_date = next(
+        iter(record_dates)
+    )
+
+    if archive_date != member_date:
+        raise RuntimeError(
+            f"{archive_path.name}: "
+            "archive filename date does "
+            "not match member filename: "
+            f"archive={archive_date}, "
+            f"member={member_date}"
+        )
+
+    if archive_date != record_date:
+        raise RuntimeError(
+            f"{archive_path.name}: "
+            "filename date does not match "
+            "record date: "
+            f"filename={archive_date}, "
+            f"records={record_date}"
+        )
+
+    return record_date
+
+
 def build_holder_details(
     record: KseiHoldingRecord,
     *,
@@ -584,24 +771,24 @@ def build_holder_details(
             archive_name,
         "member_name":
             member_name,
+        "as_of_date":
+            record.as_of_date.isoformat(),
         "security_type":
             record.security_type,
         "security_number":
             record.security_number,
         "price":
             record.price,
-        "local":
-            {
-                **record.local,
-                "total":
-                    record.local_total,
-            },
-        "foreign":
-            {
-                **record.foreign,
-                "total":
-                    record.foreign_total,
-            },
+        "local": {
+            **record.local,
+            "total":
+                record.local_total,
+        },
+        "foreign": {
+            **record.foreign,
+            "total":
+                record.foreign_total,
+        },
         "local_ownership_pct":
             round(
                 record.local_ownership_pct,

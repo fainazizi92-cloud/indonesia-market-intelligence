@@ -45,14 +45,18 @@ def decode_content(
     for encoding in CANDIDATE_ENCODINGS:
         try:
             return (
-                raw.decode(encoding),
+                raw.decode(
+                    encoding
+                ),
                 encoding,
             )
+
         except UnicodeDecodeError:
             continue
 
     raise RuntimeError(
-        "Could not decode archive member."
+        "Could not decode "
+        "archive member."
     )
 
 
@@ -70,15 +74,19 @@ def detect_delimiter(
         return dialect.delimiter
 
     except csv.Error:
+        lines = text.splitlines()
+
         first_line = (
-            text.splitlines()[0]
-            if text.splitlines()
+            lines[0]
+            if lines
             else ""
         )
 
         counts = {
             delimiter:
-                first_line.count(delimiter)
+                first_line.count(
+                    delimiter
+                )
             for delimiter
             in CANDIDATE_DELIMITERS
         }
@@ -102,7 +110,10 @@ def main() -> None:
             f"{archive_path}"
         )
 
-    if archive_path.suffix.lower() != ".zip":
+    if (
+        archive_path.suffix.lower()
+        != ".zip"
+    ):
         raise ValueError(
             "Expected a .zip archive."
         )
@@ -114,7 +125,8 @@ def main() -> None:
         "------------------------------"
     )
     print(
-        f"Archive : {archive_path.name}"
+        f"Archive : "
+        f"{archive_path.name}"
     )
     print()
 
@@ -125,7 +137,8 @@ def main() -> None:
         members = archive.namelist()
 
         print(
-            f"Members : {len(members)}"
+            f"Members : "
+            f"{len(members)}"
         )
 
         for index, member in enumerate(
@@ -224,7 +237,9 @@ def main() -> None:
     for index, row in enumerate(
         reader
     ):
-        rows.append(row)
+        rows.append(
+            row
+        )
 
         if index >= 4:
             break
@@ -243,7 +258,10 @@ def main() -> None:
             f"{len(row)} columns"
         )
 
-        for column_index, value in enumerate(
+        for (
+            column_index,
+            value,
+        ) in enumerate(
             row,
             start=1,
         ):
@@ -257,7 +275,8 @@ def main() -> None:
     if rows:
         print(
             "Detected first-row "
-            f"column count: {len(rows[0])}"
+            f"column count: "
+            f"{len(rows[0])}"
         )
 
 
