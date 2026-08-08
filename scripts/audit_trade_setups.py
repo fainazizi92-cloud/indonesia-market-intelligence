@@ -151,10 +151,10 @@ def compare_rows(
             mismatches += 1
 
             details.append(
-                
+
                     f"{key}: stored row "
                     "has no generated row"
-                
+
             )
 
             continue
@@ -163,10 +163,10 @@ def compare_rows(
             mismatches += 1
 
             details.append(
-                
+
                     f"{key}: generated row "
                     "is missing from storage"
-                
+
             )
 
             continue
@@ -181,14 +181,14 @@ def compare_rows(
                 row_mismatch = True
 
                 details.append(
-                    
+
                         f"{key} field="
                         f"{field} "
                         f"generated="
                         f"{expected[field]} "
                         f"stored="
                         f"{actual[field]}"
-                    
+
                 )
 
                 break
@@ -223,14 +223,14 @@ def compare_rows(
                 row_mismatch = True
 
                 details.append(
-                    
+
                         f"{key} field="
                         f"{field} "
                         f"generated="
                         f"{expected_value} "
                         f"stored="
                         f"{actual_value}"
-                    
+
                 )
 
                 break

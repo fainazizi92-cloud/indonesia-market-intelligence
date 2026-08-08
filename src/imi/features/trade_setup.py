@@ -103,11 +103,11 @@ def extract_current_universe_date(
         )
 
     return date.fromisoformat(
-        
+
             f"{match.group(1)[0:4]}-"
             f"{match.group(1)[4:6]}-"
             f"{match.group(1)[6:8]}"
-        
+
     )
 
 
@@ -666,10 +666,10 @@ def calculate_trade_setup(
 
         if sizing.lots < 1:
             reasons.append(
-                
+
                     "REFERENCE_CAPITAL_"
                     "CANNOT_SIZE_ONE_LOT"
-                
+
             )
 
     if reasons:

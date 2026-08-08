@@ -73,11 +73,11 @@ def test_model_version() -> None:
 def test_extract_universe_date() -> None:
     result = (
         extract_current_universe_date(
-            
+
                 "stock_screener_v1_"
                 "current_20260808_"
                 "yahoo_ksei"
-            
+
         )
     )
 
